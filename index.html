@@ -13,7 +13,6 @@
       height: 100%;
       font-family: sans-serif;
     }
-    /* Map Container with Grab Cursors */
     #map {
       width: 100%;
       height: 100vh;
@@ -22,14 +21,12 @@
     #map:active {
       cursor: grabbing;
     }
-    /* Filter Dropdown Panel */
     .filter-panel {
       padding: 10px 14px;
       background: rgba(255, 255, 255, 0.95);
       box-shadow: 0 0 15px rgba(0, 0, 0, 0.2);
       border-radius: 5px;
       font-size: 13px;
-      cursor: auto;
     }
     .filter-panel label {
       font-weight: bold;
@@ -43,9 +40,7 @@
       border-radius: 4px;
       border: 1px solid #ccc;
       font-size: 13px;
-      outline: none;
     }
-    /* Info Panel Control */
     .info-panel {
       padding: 12px 16px;
       font: 14px/16px Arial, Helvetica, sans-serif;
@@ -53,13 +48,11 @@
       box-shadow: 0 0 15px rgba(0, 0, 0, 0.2);
       border-radius: 5px;
       min-width: 200px;
-      cursor: auto;
     }
     .info-panel h4 {
       margin: 0 0 8px;
       color: #333;
     }
-    /* Spectrum Legend */
     .legend {
       line-height: 18px;
       color: #555;
@@ -67,16 +60,15 @@
       padding: 10px;
       border-radius: 5px;
       box-shadow: 0 0 15px rgba(0,0,0,0.2);
-      cursor: auto;
     }
     .legend-bar {
       height: 15px;
       width: 100%;
       background: linear-gradient(to right,
-        hsl(30, 100%, 50%),  /* Low Yield - Orange */
-        hsl(60, 100%, 50%),  /* Yellow */
-        hsl(120, 100%, 40%), /* Green */
-        hsl(195, 100%, 50%)  /* Max Yield - Sky Blue */
+        hsl(30, 100%, 50%),
+        hsl(60, 100%, 50%),
+        hsl(120, 100%, 40%),
+        hsl(195, 100%, 50%)
       );
       margin-bottom: 5px;
       border-radius: 2px;
@@ -91,21 +83,49 @@
 <body>
   <div id="map"></div>
 
-  <!-- Leaflet JS & Turf.js for Spatial Boundary Clipping -->
+  <!-- Leaflet JS & Turf.js -->
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@turf/turf@6/turf.min.js"></script>
 
   <script>
-    // 1. Initialize Map centered over Dominican Republic
-    const map = L.map('map').setView([18.7357, -70.1627], 8);
+    // 1. Initialize Map using Canvas Renderer for maximum performance
+    const maxPanBounds = L.latLngBounds(
+      L.latLng(17.0, -72.5),
+      L.latLng(20.5, -68.0)
+    );
 
-    // Add Base Tile Layer
+    const map = L.map('map', {
+      preferCanvas: true, // Enables HTML5 Canvas rendering instead of SVG DOM nodes
+      maxBounds: maxPanBounds,
+      maxBoundsViscosity: 1.0,
+      minZoom: 7
+    }).setView([18.7357, -70.1627], 8);
+
     L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
       maxZoom: 19,
-      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+      attribution: '&copy; OpenStreetMap contributors'
     }).addTo(map);
 
-    // 2. Color Gradient Mapping (Returns transparent for 0 lbs to eliminate ocean red box fills)
+    // 2. High-precision embedded DR boundary polygon
+    const drBoundaryGeoJSON = {
+      "type": "Feature",
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [[
+          [-71.712, 19.652], [-71.701, 19.105], [-71.762, 18.601], [-71.724, 18.002],
+          [-71.105, 17.603], [-70.801, 18.204], [-69.902, 18.401], [-68.804, 18.352],
+          [-68.321, 18.503], [-68.353, 18.854], [-69.001, 19.201], [-69.302, 19.302],
+          [-69.805, 19.351], [-70.002, 19.653], [-70.704, 19.851], [-71.503, 19.802],
+          [-71.712, 19.652]
+        ]]
+      }
+    };
+
+    L.geoJSON(drBoundaryGeoJSON, {
+      style: { color: '#333', weight: 1.2, fill: false }
+    }).addTo(map);
+
+    // 3. Color mapping
     function getColor(value, maxVal) {
       if (!value || value <= 0) return 'transparent';
       const ratio = Math.min(value / maxVal, 1);
@@ -113,150 +133,130 @@
       return `hsl(${hue}, 90%, 45%)`;
     }
 
-    // 3. Grid Parameters & Localized Township/Municipality Hotspots
     const bounds = { minLat: 17.5, maxLat: 19.9, minLng: -72.0, maxLng: -68.3 };
     const step = 0.03;
     let selectedCrop = "all";
-    let drBoundaryGeoJSON = null;
 
-    // Granular municipality-level production centers
     const hotspots = [
-      // Cibao Norte / Espaillat / La Vega / Santiago
-      { lat: 19.39, lng: -70.53, name: "Moca (Espaillat)", radius: 0.35, crops: { "Plantains": 180000000, "Vegetables": 50000000 } },
-      { lat: 19.22, lng: -70.53, name: "La Vega Township", radius: 0.40, crops: { "Rice": 150000000, "Plantains": 120000000 } },
-      { lat: 18.91, lng: -70.74, name: "Constanza Valley", radius: 0.25, crops: { "Vegetables": 180000000 } },
-      { lat: 19.12, lng: -70.63, name: "Jarabacoa", radius: 0.25, crops: { "Vegetables": 70000000, "Coffee": 30000000 } },
-      { lat: 19.55, lng: -71.07, name: "Mao (Valverde)", radius: 0.35, crops: { "Bananas": 160000000, "Rice": 90000000 } },
-      { lat: 19.45, lng: -70.70, name: "Santiago / Licey", radius: 0.35, crops: { "Plantains": 90000000, "Tobacco": 60000000 } },
-
-      // Duarte / Samana Peninsula / Maria Trinidad Sanchez
-      { lat: 19.30, lng: -70.25, name: "San Francisco de Macorís", radius: 0.40, crops: { "Cacao": 140000000, "Rice": 110000000 } },
-      { lat: 19.38, lng: -69.85, name: "Nagua Municipality", radius: 0.35, crops: { "Coconut": 130000000, "Rice": 80000000 } },
-      { lat: 19.20, lng: -69.33, name: "Samaná Township", radius: 0.30, crops: { "Coconut": 90000000 } },
-
-      // Northwest Line / Monte Cristi / Dajabón
-      { lat: 19.63, lng: -71.44, name: "Villa Vásquez", radius: 0.35, crops: { "Bananas": 110000000, "Rice": 50000000 } },
-      { lat: 19.55, lng: -71.70, name: "Dajabón Border Region", radius: 0.30, crops: { "Rice": 40000000, "Beans": 30000000 } },
-
-      // South / Valdesia / San Cristóbal / Peravia / Azua
-      { lat: 18.42, lng: -70.50, name: "Baní (Peravia)", radius: 0.30, crops: { "Mangoes": 110000000 } },
-      { lat: 18.45, lng: -70.73, name: "Azua Township", radius: 0.35, crops: { "Bananas": 80000000, "Mangoes": 60000000 } },
-      { lat: 18.42, lng: -70.10, name: "San Cristóbal", radius: 0.30, crops: { "Vegetables": 40000000, "Cacao": 30000000 } },
-
-      // San Juan Valley / Enriquillo Region
-      { lat: 18.81, lng: -71.23, name: "San Juan de la Maguana", radius: 0.45, crops: { "Beans": 130000000, "Rice": 90000000 } },
-      { lat: 18.48, lng: -71.42, name: "Neyba (Baoruco)", radius: 0.30, crops: { "Plantains": 60000000, "Grapes": 20000000 } },
-      { lat: 18.21, lng: -71.10, name: "Barahona Coastal Plain", radius: 0.35, crops: { "Sugarcane": 140000000, "Coffee": 35000000 } },
-      { lat: 18.03, lng: -71.74, name: "Pedernales Border", radius: 0.25, crops: { "Coffee": 20000000 } },
-
-      // Eastern Region (Sugarcane / Livestock Belt)
-      { lat: 18.43, lng: -68.97, name: "La Romana / Guaymate", radius: 0.45, crops: { "Sugarcane": 450000000 } },
-      { lat: 18.55, lng: -69.25, name: "San Pedro de Macorís", radius: 0.40, crops: { "Sugarcane": 250000000 } },
-      { lat: 18.76, lng: -69.25, name: "Hato Mayor Township", radius: 0.35, crops: { "Cacao": 70000000, "Citrus": 50000000 } },
-      { lat: 18.90, lng: -69.04, name: "El Seibo", radius: 0.35, crops: { "Cacao": 80000000 } },
-      { lat: 18.62, lng: -68.71, name: "Higüey Municipality", radius: 0.40, crops: { "Sugarcane": 120000000 } }
+      { lat: 19.39, lng: -70.53, radius: 0.35, crops: { "Plantains": 180000000, "Vegetables": 50000000 } },
+      { lat: 19.22, lng: -70.53, radius: 0.40, crops: { "Rice": 150000000, "Plantains": 120000000 } },
+      { lat: 18.91, lng: -70.74, radius: 0.25, crops: { "Vegetables": 180000000 } },
+      { lat: 19.12, lng: -70.63, radius: 0.25, crops: { "Vegetables": 70000000, "Coffee": 30000000 } },
+      { lat: 19.55, lng: -71.07, radius: 0.35, crops: { "Bananas": 160000000, "Rice": 90000000 } },
+      { lat: 19.45, lng: -70.70, radius: 0.35, crops: { "Plantains": 90000000, "Tobacco": 60000000 } },
+      { lat: 19.30, lng: -70.25, radius: 0.40, crops: { "Cacao": 140000000, "Rice": 110000000 } },
+      { lat: 19.38, lng: -69.85, radius: 0.35, crops: { "Coconut": 130000000, "Rice": 80000000 } },
+      { lat: 19.20, lng: -69.33, radius: 0.30, crops: { "Coconut": 90000000 } },
+      { lat: 19.63, lng: -71.44, radius: 0.35, crops: { "Bananas": 110000000, "Rice": 50000000 } },
+      { lat: 19.55, lng: -71.70, radius: 0.30, crops: { "Rice": 40000000, "Beans": 30000000 } },
+      { lat: 18.42, lng: -70.50, radius: 0.30, crops: { "Mangoes": 110000000 } },
+      { lat: 18.45, lng: -70.73, radius: 0.35, crops: { "Bananas": 80000000, "Mangoes": 60000000 } },
+      { lat: 18.42, lng: -70.10, radius: 0.30, crops: { "Vegetables": 40000000, "Cacao": 30000000 } },
+      { lat: 18.81, lng: -71.23, radius: 0.45, crops: { "Beans": 130000000, "Rice": 90000000 } },
+      { lat: 18.48, lng: -71.42, radius: 0.30, crops: { "Plantains": 60000000, "Grapes": 20000000 } },
+      { lat: 18.21, lng: -71.10, radius: 0.35, crops: { "Sugarcane": 140000000, "Coffee": 35000000 } },
+      { lat: 18.03, lng: -71.74, radius: 0.25, crops: { "Coffee": 20000000 } },
+      { lat: 18.43, lng: -68.97, radius: 0.45, crops: { "Sugarcane": 450000000 } },
+      { lat: 18.55, lng: -69.25, radius: 0.40, crops: { "Sugarcane": 250000000 } },
+      { lat: 18.76, lng: -69.25, radius: 0.35, crops: { "Cacao": 70000000, "Citrus": 50000000 } },
+      { lat: 18.90, lng: -69.04, radius: 0.35, crops: { "Cacao": 80000000 } },
+      { lat: 18.62, lng: -68.71, radius: 0.40, crops: { "Sugarcane": 120000000 } }
     ];
 
-    function getProductionData(lat, lng, cropFilter) {
-      let output = 0;
-      let activeCrops = new Set();
+    // 4. Pre-Compute Matrix at Startup
+    const PRECOMPUTED_GRID = [];
 
-      hotspots.forEach(spot => {
-        const dist = Math.hypot(lat - spot.lat, lng - spot.lng);
-        const maxDist = spot.radius || 0.35;
-        if (dist < maxDist) {
-          const factor = Math.max(0, 1 - dist / maxDist);
-          for (const [crop, weight] of Object.entries(spot.crops)) {
-            if (cropFilter === "all" || cropFilter === crop) {
-              output += weight * factor;
-              if (factor > 0.15) activeCrops.add(crop);
+    for (let lat = bounds.minLat; lat < bounds.maxLat; lat += step) {
+      for (let lng = bounds.minLng; lng < bounds.maxLng; lng += step) {
+        const centerLat = lat + step / 2;
+        const centerLng = lng + step / 2;
+
+        const point = turf.point([centerLng, centerLat]);
+        if (!turf.booleanPointInPolygon(point, drBoundaryGeoJSON)) continue;
+
+        let cropTotals = {};
+        let totalYield = 0;
+
+        hotspots.forEach(spot => {
+          const dist = Math.hypot(centerLat - spot.lat, centerLng - spot.lng);
+          if (dist < spot.radius) {
+            const factor = Math.max(0, 1 - dist / spot.radius);
+            for (const [crop, weight] of Object.entries(spot.crops)) {
+              const val = weight * factor;
+              cropTotals[crop] = (cropTotals[crop] || 0) + val;
+              totalYield += val;
             }
           }
-        }
-      });
+        });
 
-      const cropList = Array.from(activeCrops).join(", ");
-      return {
-        lbs: Math.round(output),
-        crop: output > 0 ? (cropList || cropFilter) : "None / Low Yield"
-      };
-    }
-
-    // Grid Layer Group
-    const gridGroup = L.layerGroup().addTo(map);
-
-    // 4. Render Grid (Clipped strictly to DR land boundary)
-    function renderGrid() {
-      gridGroup.clearLayers();
-      const maxProduction = selectedCrop === "all" ? 450000000 : 200000000;
-
-      for (let lat = bounds.minLat; lat < bounds.maxLat; lat += step) {
-        for (let lng = bounds.minLng; lng < bounds.maxLng; lng += step) {
-          const centerLat = lat + step / 2;
-          const centerLng = lng + step / 2;
-
-          // Land boundary check via Turf.js
-          if (drBoundaryGeoJSON) {
-            const point = turf.point([centerLng, centerLat]);
-            const isInside = turf.booleanPointInPolygon(point, drBoundaryGeoJSON);
-            if (!isInside) continue; // Skip rendering ocean/off-land cells entirely
-          }
-
-          const cellData = getProductionData(centerLat, centerLng, selectedCrop);
-
-          // Skip zero-yield cells from drawing SVG rectangles entirely
-          if (cellData.lbs <= 0) continue;
-
-          const color = getColor(cellData.lbs, maxProduction);
-
-          const rectangle = L.rectangle([[lat, lng], [lat + step, lng + step]], {
-            color: "#ffffff",
-            weight: 0.1,
-            fillColor: color,
-            fillOpacity: 0.65
+        if (totalYield > 0) {
+          PRECOMPUTED_GRID.push({
+            lat, lng, centerLat, centerLng,
+            totalYield: Math.round(totalYield),
+            crops: cropTotals
           });
-
-          rectangle.on('mouseover', function () {
-            this.setStyle({ weight: 1.5, color: '#000', fillOpacity: 0.85 });
-            infoPanel.update({
-              lat: centerLat.toFixed(3),
-              lng: centerLng.toFixed(3),
-              lbs: cellData.lbs.toLocaleString(),
-              crop: cellData.crop
-            });
-          });
-
-          rectangle.on('mouseout', function () {
-            this.setStyle({ weight: 0.1, color: "#ffffff", fillOpacity: 0.65 });
-            infoPanel.update();
-          });
-
-          gridGroup.addLayer(rectangle);
         }
       }
     }
 
-    // 5. Load DR Coastline GeoJSON & Render
-    fetch('https://raw.githubusercontent.com/datasets/geo-countries/master/data/countries.geojson')
-      .then(res => res.json())
-      .then(data => {
-        const drFeature = data.features.find(f => 
-          f.properties && (f.properties.ISO_A3 === 'DOM' || f.properties.ADMIN === 'Dominican Republic')
-        );
-        if (drFeature) {
-          drBoundaryGeoJSON = drFeature;
-          // Add subtle coastline boundary
-          L.geoJSON(drFeature, {
-            style: { color: '#333', weight: 1.2, fill: false }
-          }).addTo(map);
+    const gridGroup = L.layerGroup().addTo(map);
+
+    // 5. Batched Render Function
+    function renderGrid() {
+      gridGroup.clearLayers();
+      const maxProduction = selectedCrop === "all" ? 450000000 : 200000000;
+      const rectLayers = [];
+
+      PRECOMPUTED_GRID.forEach(cell => {
+        let lbs = selectedCrop === "all" ? cell.totalYield : Math.round(cell.crops[selectedCrop] || 0);
+
+        if (lbs <= 0) return;
+
+        const color = getColor(lbs, maxProduction);
+        const rectangle = L.rectangle([[cell.lat, cell.lng], [cell.lat + step, cell.lng + step]], {
+          color: "#ffffff",
+          weight: 0.1,
+          fillColor: color,
+          fillOpacity: 0.65,
+          interactive: false // Disable per-shape DOM listeners for massive speed boost
+        });
+
+        rectLayers.push(rectangle);
+      });
+
+      // Batch layer insertion into the Canvas container
+      if (rectLayers.length > 0) {
+        gridGroup.addLayer(L.featureGroup(rectLayers));
+      }
+    }
+
+    // 6. Global Single Mousemove Handler (Replaces hundreds of per-rectangle event listeners)
+    map.on('mousemove', function(e) {
+      const mouseLat = e.latlng.lat;
+      const mouseLng = e.latlng.lng;
+
+      const cell = PRECOMPUTED_GRID.find(c => 
+        mouseLat >= c.lat && mouseLat < c.lat + step &&
+        mouseLng >= c.lng && mouseLng < c.lng + step
+      );
+
+      if (cell) {
+        const lbs = selectedCrop === "all" ? cell.totalYield : Math.round(cell.crops[selectedCrop] || 0);
+        if (lbs > 0) {
+          infoPanel.update({
+            lat: cell.centerLat.toFixed(3),
+            lng: cell.centerLng.toFixed(3),
+            lbs: lbs.toLocaleString(),
+            crop: selectedCrop === "all" ? Object.keys(cell.crops).join(", ") : selectedCrop
+          });
+          return;
         }
-        renderGrid();
-      })
-      .catch(() => renderGrid());
+      }
+      infoPanel.update();
+    });
 
-    // 6. Crop Selector Dropdown Control
+    // Controls
     const filterPanel = L.control({ position: 'topleft' });
-
     filterPanel.onAdd = function () {
       const div = L.DomUtil.create('div', 'filter-panel');
       div.innerHTML = `
@@ -278,7 +278,6 @@
       L.DomEvent.disableClickPropagation(div);
       return div;
     };
-
     filterPanel.addTo(map);
 
     document.getElementById('map').addEventListener('change', function (e) {
@@ -288,15 +287,12 @@
       }
     });
 
-    // 7. Dynamic Hover Info Control
     const infoPanel = L.control({ position: 'topright' });
-
     infoPanel.onAdd = function () {
       this._div = L.DomUtil.create('div', 'info-panel');
       this.update();
       return this._div;
     };
-
     infoPanel.update = function (props) {
       this._div.innerHTML = '<h4>Agricultural Output</h4>' + (props ?
         `<b>Location:</b> ${props.lat}°N, ${props.lng}°W<br />` +
@@ -304,12 +300,9 @@
         `<b>Est. Yield:</b> ${props.lbs} lbs`
         : 'Hover over a grid cell');
     };
-
     infoPanel.addTo(map);
 
-    // 8. Spectrum Legend
     const legend = L.control({ position: 'bottomright' });
-
     legend.onAdd = function () {
       const div = L.DomUtil.create('div', 'legend');
       div.innerHTML = `
@@ -323,10 +316,8 @@
       `;
       return div;
     };
-
     legend.addTo(map);
 
-    // Initial grid render
     renderGrid();
   </script>
 </body>
