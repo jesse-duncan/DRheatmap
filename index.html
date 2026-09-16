@@ -73,8 +73,7 @@
       height: 15px;
       width: 100%;
       background: linear-gradient(to right,
-        hsl(0, 100%, 35%),   /* Low Yield - Dark Red */
-        hsl(30, 100%, 50%),  /* Orange */
+        hsl(30, 100%, 50%),  /* Low Yield - Orange */
         hsl(60, 100%, 50%),  /* Yellow */
         hsl(120, 100%, 40%), /* Green */
         hsl(195, 100%, 50%)  /* Max Yield - Sky Blue */
@@ -106,9 +105,9 @@
       attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
     }).addTo(map);
 
-    // 2. Color Gradient Mapping
+    // 2. Color Gradient Mapping (Returns transparent for 0 lbs to eliminate ocean red box fills)
     function getColor(value, maxVal) {
-      if (value === 0) return 'hsl(0, 100%, 35%)';
+      if (!value || value <= 0) return 'transparent';
       const ratio = Math.min(value / maxVal, 1);
       const hue = ratio * 195;
       return `hsl(${hue}, 90%, 45%)`;
@@ -116,7 +115,7 @@
 
     // 3. Grid Parameters & Localized Township/Municipality Hotspots
     const bounds = { minLat: 17.5, maxLat: 19.9, minLng: -72.0, maxLng: -68.3 };
-    const step = 0.035;
+    const step = 0.03;
     let selectedCrop = "all";
     let drBoundaryGeoJSON = null;
 
@@ -179,7 +178,7 @@
       const cropList = Array.from(activeCrops).join(", ");
       return {
         lbs: Math.round(output),
-        crop: output > 0 ? (cropList || cropFilter) : "Low Yield / Protected Area"
+        crop: output > 0 ? (cropList || cropFilter) : "None / Low Yield"
       };
     }
 
@@ -196,7 +195,7 @@
           const centerLat = lat + step / 2;
           const centerLng = lng + step / 2;
 
-          // 1.) Compute optimization: Skip point if not inside DR land polygon
+          // Land boundary check via Turf.js
           if (drBoundaryGeoJSON) {
             const point = turf.point([centerLng, centerLat]);
             const isInside = turf.booleanPointInPolygon(point, drBoundaryGeoJSON);
@@ -204,11 +203,15 @@
           }
 
           const cellData = getProductionData(centerLat, centerLng, selectedCrop);
+
+          // Skip zero-yield cells from drawing SVG rectangles entirely
+          if (cellData.lbs <= 0) continue;
+
           const color = getColor(cellData.lbs, maxProduction);
 
           const rectangle = L.rectangle([[lat, lng], [lat + step, lng + step]], {
             color: "#ffffff",
-            weight: 0.2,
+            weight: 0.1,
             fillColor: color,
             fillOpacity: 0.65
           });
@@ -224,7 +227,7 @@
           });
 
           rectangle.on('mouseout', function () {
-            this.setStyle({ weight: 0.2, color: "#ffffff", fillOpacity: 0.65 });
+            this.setStyle({ weight: 0.1, color: "#ffffff", fillOpacity: 0.65 });
             infoPanel.update();
           });
 
@@ -237,7 +240,9 @@
     fetch('https://raw.githubusercontent.com/datasets/geo-countries/master/data/countries.geojson')
       .then(res => res.json())
       .then(data => {
-        const drFeature = data.features.find(f => f.properties.ISO_A3 === 'DOM' || f.properties.ADMIN === 'Dominican Republic');
+        const drFeature = data.features.find(f => 
+          f.properties && (f.properties.ISO_A3 === 'DOM' || f.properties.ADMIN === 'Dominican Republic')
+        );
         if (drFeature) {
           drBoundaryGeoJSON = drFeature;
           // Add subtle coastline boundary
@@ -311,7 +316,7 @@
         <strong>Production Gradient</strong>
         <div class="legend-bar"></div>
         <div class="legend-labels">
-          <span>0 lbs (Red)</span>
+          <span>Low Yield</span>
           <span>Mid Yield</span>
           <span>High Yield (Sky Blue)</span>
         </div>
@@ -320,6 +325,9 @@
     };
 
     legend.addTo(map);
+
+    // Initial grid render
+    renderGrid();
   </script>
 </body>
 </html>
