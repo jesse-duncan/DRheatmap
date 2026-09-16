@@ -100,7 +100,7 @@
     // 1. Initialize Map centered over Dominican Republic
     const map = L.map('map').setView([18.7357, -70.1627], 8);
 
-    // Add Base Tile Layer (Updated to standard OpenStreetMap to remove API key requirement watermark)
+    // Add Base Tile Layer
     L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
       maxZoom: 19,
       attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
@@ -114,21 +114,48 @@
       return `hsl(${hue}, 90%, 45%)`;
     }
 
-    // 3. Grid Parameters & Expanded Country-Wide Regional Data
+    // 3. Grid Parameters & Localized Township/Municipality Hotspots
     const bounds = { minLat: 17.5, maxLat: 19.9, minLng: -72.0, maxLng: -68.3 };
-    const step = 0.04;
+    const step = 0.035;
     let selectedCrop = "all";
     let drBoundaryGeoJSON = null;
 
+    // Granular municipality-level production centers
     const hotspots = [
-      { lat: 19.4, lng: -70.6, name: "Cibao Valley", crops: { "Plantains": 280000000, "Rice": 200000000 } },
-      { lat: 18.4, lng: -68.9, name: "La Romana", crops: { "Sugarcane": 500000000 } },
-      { lat: 18.9, lng: -70.7, name: "Constanza Highlands", crops: { "Vegetables": 180000000 } },
-      { lat: 18.4, lng: -70.9, name: "Azua Valley", crops: { "Bananas": 90000000, "Mangoes": 70000000 } },
-      { lat: 18.8, lng: -71.2, name: "San Juan Basin", crops: { "Beans": 120000000, "Rice": 90000000 } },
-      { lat: 19.3, lng: -69.8, name: "Nagua & Samana", crops: { "Coconut": 150000000, "Cacao": 80000000 } },
-      { lat: 18.2, lng: -71.1, name: "Barahona Coastal", crops: { "Sugarcane": 140000000, "Coffee": 40000000 } },
-      { lat: 19.6, lng: -71.3, name: "Monte Cristi", crops: { "Bananas": 110000000, "Rice": 60000000 } }
+      // Cibao Norte / Espaillat / La Vega / Santiago
+      { lat: 19.39, lng: -70.53, name: "Moca (Espaillat)", radius: 0.35, crops: { "Plantains": 180000000, "Vegetables": 50000000 } },
+      { lat: 19.22, lng: -70.53, name: "La Vega Township", radius: 0.40, crops: { "Rice": 150000000, "Plantains": 120000000 } },
+      { lat: 18.91, lng: -70.74, name: "Constanza Valley", radius: 0.25, crops: { "Vegetables": 180000000 } },
+      { lat: 19.12, lng: -70.63, name: "Jarabacoa", radius: 0.25, crops: { "Vegetables": 70000000, "Coffee": 30000000 } },
+      { lat: 19.55, lng: -71.07, name: "Mao (Valverde)", radius: 0.35, crops: { "Bananas": 160000000, "Rice": 90000000 } },
+      { lat: 19.45, lng: -70.70, name: "Santiago / Licey", radius: 0.35, crops: { "Plantains": 90000000, "Tobacco": 60000000 } },
+
+      // Duarte / Samana Peninsula / Maria Trinidad Sanchez
+      { lat: 19.30, lng: -70.25, name: "San Francisco de Macorís", radius: 0.40, crops: { "Cacao": 140000000, "Rice": 110000000 } },
+      { lat: 19.38, lng: -69.85, name: "Nagua Municipality", radius: 0.35, crops: { "Coconut": 130000000, "Rice": 80000000 } },
+      { lat: 19.20, lng: -69.33, name: "Samaná Township", radius: 0.30, crops: { "Coconut": 90000000 } },
+
+      // Northwest Line / Monte Cristi / Dajabón
+      { lat: 19.63, lng: -71.44, name: "Villa Vásquez", radius: 0.35, crops: { "Bananas": 110000000, "Rice": 50000000 } },
+      { lat: 19.55, lng: -71.70, name: "Dajabón Border Region", radius: 0.30, crops: { "Rice": 40000000, "Beans": 30000000 } },
+
+      // South / Valdesia / San Cristóbal / Peravia / Azua
+      { lat: 18.42, lng: -70.50, name: "Baní (Peravia)", radius: 0.30, crops: { "Mangoes": 110000000 } },
+      { lat: 18.45, lng: -70.73, name: "Azua Township", radius: 0.35, crops: { "Bananas": 80000000, "Mangoes": 60000000 } },
+      { lat: 18.42, lng: -70.10, name: "San Cristóbal", radius: 0.30, crops: { "Vegetables": 40000000, "Cacao": 30000000 } },
+
+      // San Juan Valley / Enriquillo Region
+      { lat: 18.81, lng: -71.23, name: "San Juan de la Maguana", radius: 0.45, crops: { "Beans": 130000000, "Rice": 90000000 } },
+      { lat: 18.48, lng: -71.42, name: "Neyba (Baoruco)", radius: 0.30, crops: { "Plantains": 60000000, "Grapes": 20000000 } },
+      { lat: 18.21, lng: -71.10, name: "Barahona Coastal Plain", radius: 0.35, crops: { "Sugarcane": 140000000, "Coffee": 35000000 } },
+      { lat: 18.03, lng: -71.74, name: "Pedernales Border", radius: 0.25, crops: { "Coffee": 20000000 } },
+
+      // Eastern Region (Sugarcane / Livestock Belt)
+      { lat: 18.43, lng: -68.97, name: "La Romana / Guaymate", radius: 0.45, crops: { "Sugarcane": 450000000 } },
+      { lat: 18.55, lng: -69.25, name: "San Pedro de Macorís", radius: 0.40, crops: { "Sugarcane": 250000000 } },
+      { lat: 18.76, lng: -69.25, name: "Hato Mayor Township", radius: 0.35, crops: { "Cacao": 70000000, "Citrus": 50000000 } },
+      { lat: 18.90, lng: -69.04, name: "El Seibo", radius: 0.35, crops: { "Cacao": 80000000 } },
+      { lat: 18.62, lng: -68.71, name: "Higüey Municipality", radius: 0.40, crops: { "Sugarcane": 120000000 } }
     ];
 
     function getProductionData(lat, lng, cropFilter) {
@@ -137,8 +164,9 @@
 
       hotspots.forEach(spot => {
         const dist = Math.hypot(lat - spot.lat, lng - spot.lng);
-        if (dist < 1.8) {
-          const factor = Math.max(0, 1 - dist / 1.8);
+        const maxDist = spot.radius || 0.35;
+        if (dist < maxDist) {
+          const factor = Math.max(0, 1 - dist / maxDist);
           for (const [crop, weight] of Object.entries(spot.crops)) {
             if (cropFilter === "all" || cropFilter === crop) {
               output += weight * factor;
@@ -161,18 +189,18 @@
     // 4. Render Grid (Clipped strictly to DR land boundary)
     function renderGrid() {
       gridGroup.clearLayers();
-      const maxProduction = selectedCrop === "all" ? 500000000 : 300000000;
+      const maxProduction = selectedCrop === "all" ? 450000000 : 200000000;
 
       for (let lat = bounds.minLat; lat < bounds.maxLat; lat += step) {
         for (let lng = bounds.minLng; lng < bounds.maxLng; lng += step) {
           const centerLat = lat + step / 2;
           const centerLng = lng + step / 2;
 
-          // Check if point is inside DR land boundary polygon
+          // 1.) Compute optimization: Skip point if not inside DR land polygon
           if (drBoundaryGeoJSON) {
             const point = turf.point([centerLng, centerLat]);
             const isInside = turf.booleanPointInPolygon(point, drBoundaryGeoJSON);
-            if (!isInside) continue; // Skip rendering cells outside the coast
+            if (!isInside) continue; // Skip rendering ocean/off-land cells entirely
           }
 
           const cellData = getProductionData(centerLat, centerLng, selectedCrop);
@@ -212,7 +240,7 @@
         const drFeature = data.features.find(f => f.properties.ISO_A3 === 'DOM' || f.properties.ADMIN === 'Dominican Republic');
         if (drFeature) {
           drBoundaryGeoJSON = drFeature;
-          // Add subtle outline along the coast
+          // Add subtle coastline boundary
           L.geoJSON(drFeature, {
             style: { color: '#333', weight: 1.2, fill: false }
           }).addTo(map);
