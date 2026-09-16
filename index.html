@@ -17,6 +17,28 @@
       width: 100%;
       height: 100vh;
     }
+    /* Filter Dropdown Panel */
+    .filter-panel {
+      padding: 10px 14px;
+      background: rgba(255, 255, 255, 0.95);
+      box-shadow: 0 0 15px rgba(0, 0, 0, 0.2);
+      border-radius: 5px;
+      font-size: 13px;
+    }
+    .filter-panel label {
+      font-weight: bold;
+      display: block;
+      margin-bottom: 5px;
+      color: #333;
+    }
+    .filter-panel select {
+      width: 100%;
+      padding: 6px;
+      border-radius: 4px;
+      border: 1px solid #ccc;
+      font-size: 13px;
+      outline: none;
+    }
     /* Info Panel Control */
     .info-panel {
       padding: 12px 16px;
@@ -82,68 +104,128 @@
       return `hsl(${hue}, 90%, 45%)`;
     }
 
-    // 3. Grid Generation Parameters
+    // 3. Grid Parameters & Regional Data
     const bounds = { minLat: 17.5, maxLat: 19.9, minLng: -72.0, maxLng: -68.3 };
-    const step = 0.04; // Set to 0.04 step size
-    const maxProduction = 500000000;
+    const step = 0.04;
+    let selectedCrop = "all";
 
-    // Simulated regional production hotspots
+    // Hotspot production break-down by crop (lbs)
     const hotspots = [
-      { lat: 19.4, lng: -70.6, name: "Cibao Valley", crop: "Plantains & Rice", weight: 480000000 },
-      { lat: 18.4, lng: -68.9, name: "La Romana", crop: "Sugarcane", weight: 500000000 },
-      { lat: 18.9, lng: -70.7, name: "Constanza Highlands", crop: "Vegetables", weight: 180000000 },
-      { lat: 18.4, lng: -70.9, name: "Azua Valley", crop: "Bananas & Mangoes", weight: 90000000 }
+      {
+        lat: 19.4, lng: -70.6, name: "Cibao Valley",
+        crops: { "Plantains": 280000000, "Rice": 200000000 }
+      },
+      {
+        lat: 18.4, lng: -68.9, name: "La Romana",
+        crops: { "Sugarcane": 500000000 }
+      },
+      {
+        lat: 18.9, lng: -70.7, name: "Constanza Highlands",
+        crops: { "Vegetables": 180000000 }
+      },
+      {
+        lat: 18.4, lng: -70.9, name: "Azua Valley",
+        crops: { "Bananas": 50000000, "Mangoes": 40000000 }
+      }
     ];
 
-    function getProductionData(lat, lng) {
+    function getProductionData(lat, lng, cropFilter) {
       let output = 0;
-      let mainCrop = "N/A";
+      let activeCrops = new Set();
+
       hotspots.forEach(spot => {
         const dist = Math.hypot(lat - spot.lat, lng - spot.lng);
         if (dist < 0.6) {
           const factor = Math.max(0, 1 - dist / 0.6);
-          output += spot.weight * factor;
-          if (factor > 0.3) mainCrop = spot.crop;
+          for (const [crop, weight] of Object.entries(spot.crops)) {
+            if (cropFilter === "all" || cropFilter === crop) {
+              output += weight * factor;
+              if (factor > 0.2) activeCrops.add(crop);
+            }
+          }
         }
       });
-      return { lbs: Math.round(output), crop: output > 0 ? mainCrop : "None / Protected" };
+
+      const cropList = Array.from(activeCrops).join(", ");
+      return {
+        lbs: Math.round(output),
+        crop: output > 0 ? (cropList || cropFilter) : "None / Protected"
+      };
     }
 
-    // 4. Render Grid & Attach Interaction
+    // Layer Group for the grid
     const gridGroup = L.layerGroup().addTo(map);
 
-    for (let lat = bounds.minLat; lat < bounds.maxLat; lat += step) {
-      for (let lng = bounds.minLng; lng < bounds.maxLng; lng += step) {
-        const cellData = getProductionData(lat, lng);
-        const color = getColor(cellData.lbs, maxProduction);
+    // 4. Render Grid Function
+    function renderGrid() {
+      gridGroup.clearLayers();
+      const maxProduction = selectedCrop === "all" ? 500000000 : 300000000;
 
-        const rectangle = L.rectangle([[lat, lng], [lat + step, lng + step]], {
-          color: "#ffffff",
-          weight: 0.2,
-          fillColor: color,
-          fillOpacity: 0.6
-        });
+      for (let lat = bounds.minLat; lat < bounds.maxLat; lat += step) {
+        for (let lng = bounds.minLng; lng < bounds.maxLng; lng += step) {
+          const cellData = getProductionData(lat, lng, selectedCrop);
+          const color = getColor(cellData.lbs, maxProduction);
 
-        rectangle.on('mouseover', function () {
-          this.setStyle({ weight: 1.5, color: '#000', fillOpacity: 0.85 });
-          infoPanel.update({
-            lat: lat.toFixed(3),
-            lng: lng.toFixed(3),
-            lbs: cellData.lbs.toLocaleString(),
-            crop: cellData.crop
+          const rectangle = L.rectangle([[lat, lng], [lat + step, lng + step]], {
+            color: "#ffffff",
+            weight: 0.2,
+            fillColor: color,
+            fillOpacity: 0.6
           });
-        });
 
-        rectangle.on('mouseout', function () {
-          this.setStyle({ weight: 0.2, color: "#ffffff", fillOpacity: 0.6 });
-          infoPanel.update();
-        });
+          rectangle.on('mouseover', function () {
+            this.setStyle({ weight: 1.5, color: '#000', fillOpacity: 0.85 });
+            infoPanel.update({
+              lat: lat.toFixed(3),
+              lng: lng.toFixed(3),
+              lbs: cellData.lbs.toLocaleString(),
+              crop: cellData.crop
+            });
+          });
 
-        gridGroup.addLayer(rectangle);
+          rectangle.on('mouseout', function () {
+            this.setStyle({ weight: 0.2, color: "#ffffff", fillOpacity: 0.6 });
+            infoPanel.update();
+          });
+
+          gridGroup.addLayer(rectangle);
+        }
       }
     }
 
-    // 5. Dynamic Hover Info Control
+    // 5. Crop Selector Control (Top Left)
+    const filterPanel = L.control({ position: 'topleft' });
+
+    filterPanel.onAdd = function () {
+      const div = L.DomUtil.create('div', 'filter-panel');
+      div.innerHTML = `
+        <label for="cropSelect">Select Crop / Commodity:</label>
+        <select id="cropSelect">
+          <option value="all">All Commodities (Total Yield)</option>
+          <option value="Plantains">Plantains</option>
+          <option value="Rice">Rice</option>
+          <option value="Sugarcane">Sugarcane</option>
+          <option value="Vegetables">Vegetables</option>
+          <option value="Bananas">Bananas</option>
+          <option value="Mangoes">Mangoes</option>
+        </select>
+      `;
+      // Prevent map drag/zoom actions when interacting with selector
+      L.DomEvent.disableClickPropagation(div);
+      return div;
+    };
+
+    filterPanel.addTo(map);
+
+    // Listen for dropdown changes
+    document.getElementById('map').addEventListener('change', function (e) {
+      if (e.target && e.target.id === 'cropSelect') {
+        selectedCrop = e.target.value;
+        renderGrid();
+      }
+    });
+
+    // 6. Dynamic Hover Info Control
     const infoPanel = L.control({ position: 'topright' });
 
     infoPanel.onAdd = function () {
@@ -155,14 +237,14 @@
     infoPanel.update = function (props) {
       this._div.innerHTML = '<h4>Agricultural Output</h4>' + (props ?
         `<b>Location:</b> ${props.lat}°N, ${props.lng}°W<br />` +
-        `<b>Primary Crop:</b> ${props.crop}<br />` +
+        `<b>Crop(s):</b> ${props.crop}<br />` +
         `<b>Est. Yield:</b> ${props.lbs} lbs`
         : 'Hover over a grid cell');
     };
 
     infoPanel.addTo(map);
 
-    // 6. Color Spectrum Legend
+    // 7. Color Spectrum Legend
     const legend = L.control({ position: 'bottomright' });
 
     legend.onAdd = function () {
@@ -172,14 +254,17 @@
         <div class="legend-bar"></div>
         <div class="legend-labels">
           <span>0 lbs (Red)</span>
-          <span>250M lbs</span>
-          <span>500M+ lbs (Sky Blue)</span>
+          <span>Mid Yield</span>
+          <span>High Yield (Sky Blue)</span>
         </div>
       `;
       return div;
     };
 
     legend.addTo(map);
+
+    // Initial Render
+    renderGrid();
   </script>
 </body>
 </html>
