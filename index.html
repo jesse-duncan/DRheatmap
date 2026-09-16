@@ -88,14 +88,14 @@
   <script src="https://cdn.jsdelivr.net/npm/@turf/turf@6/turf.min.js"></script>
 
   <script>
-    // 1. Initialize Map using Canvas Renderer for maximum performance
+    // 1. Initialize Map with Canvas Renderer for fast rendering
     const maxPanBounds = L.latLngBounds(
       L.latLng(17.0, -72.5),
       L.latLng(20.5, -68.0)
     );
 
     const map = L.map('map', {
-      preferCanvas: true, // Enables HTML5 Canvas rendering instead of SVG DOM nodes
+      preferCanvas: true,
       maxBounds: maxPanBounds,
       maxBoundsViscosity: 1.0,
       minZoom: 7
@@ -106,26 +106,39 @@
       attribution: '&copy; OpenStreetMap contributors'
     }).addTo(map);
 
-    // 2. High-precision embedded DR boundary polygon
+    // 2. High-precision Dominican Republic border polygon
     const drBoundaryGeoJSON = {
       "type": "Feature",
+      "properties": { "name": "Dominican Republic" },
       "geometry": {
         "type": "Polygon",
         "coordinates": [[
-          [-71.712, 19.652], [-71.701, 19.105], [-71.762, 18.601], [-71.724, 18.002],
-          [-71.105, 17.603], [-70.801, 18.204], [-69.902, 18.401], [-68.804, 18.352],
-          [-68.321, 18.503], [-68.353, 18.854], [-69.001, 19.201], [-69.302, 19.302],
-          [-69.805, 19.351], [-70.002, 19.653], [-70.704, 19.851], [-71.503, 19.802],
-          [-71.712, 19.652]
+          // Northern Border Line & Monte Cristi Coast
+          [-71.765, 19.648], [-71.691, 19.852], [-71.305, 19.824], [-70.801, 19.865],
+          [-70.380, 19.905], [-69.892, 19.680], [-69.805, 19.421], [-69.452, 19.310],
+          // Samaná Peninsula
+          [-69.182, 19.325], [-69.095, 19.210], [-69.280, 19.185], [-69.585, 19.215],
+          // Bahía de Samaná & Eastern Coast
+          [-69.605, 19.030], [-69.325, 19.040], [-68.995, 19.020], [-68.620, 18.910],
+          [-68.320, 18.685], [-68.325, 18.520], [-68.375, 18.350],
+          // Southern Coast (Punta Cana to Santo Domingo)
+          [-68.810, 18.320], [-68.960, 18.410], [-69.240, 18.430], [-69.610, 18.420],
+          [-69.890, 18.450], [-70.210, 18.230], [-70.520, 18.230],
+          // Azua, Barahona & Pedernales Peninsula
+          [-70.850, 18.380], [-71.010, 18.210], [-71.080, 17.890], [-71.210, 17.610],
+          [-71.490, 17.470], [-71.650, 17.580], [-71.690, 17.820], [-71.800, 18.020],
+          // Haitian Border Line (South to North)
+          [-71.680, 18.200], [-71.780, 18.480], [-71.690, 18.720], [-71.780, 19.120],
+          [-71.680, 19.310], [-71.765, 19.648]
         ]]
       }
     };
 
     L.geoJSON(drBoundaryGeoJSON, {
-      style: { color: '#333', weight: 1.2, fill: false }
+      style: { color: '#222', weight: 1.5, fill: false }
     }).addTo(map);
 
-    // 3. Color mapping
+    // 3. Color Gradient
     function getColor(value, maxVal) {
       if (!value || value <= 0) return 'transparent';
       const ratio = Math.min(value / maxVal, 1);
@@ -133,7 +146,7 @@
       return `hsl(${hue}, 90%, 45%)`;
     }
 
-    const bounds = { minLat: 17.5, maxLat: 19.9, minLng: -72.0, maxLng: -68.3 };
+    const bounds = { minLat: 17.4, maxLat: 19.9, minLng: -72.0, maxLng: -68.3 };
     const step = 0.03;
     let selectedCrop = "all";
 
@@ -163,7 +176,7 @@
       { lat: 18.62, lng: -68.71, radius: 0.40, crops: { "Sugarcane": 120000000 } }
     ];
 
-    // 4. Pre-Compute Matrix at Startup
+    // 4. Pre-Compute Grid Matrix
     const PRECOMPUTED_GRID = [];
 
     for (let lat = bounds.minLat; lat < bounds.maxLat; lat += step) {
@@ -201,7 +214,7 @@
 
     const gridGroup = L.layerGroup().addTo(map);
 
-    // 5. Batched Render Function
+    // 5. Render Function
     function renderGrid() {
       gridGroup.clearLayers();
       const maxProduction = selectedCrop === "all" ? 450000000 : 200000000;
@@ -218,19 +231,18 @@
           weight: 0.1,
           fillColor: color,
           fillOpacity: 0.65,
-          interactive: false // Disable per-shape DOM listeners for massive speed boost
+          interactive: false
         });
 
         rectLayers.push(rectangle);
       });
 
-      // Batch layer insertion into the Canvas container
       if (rectLayers.length > 0) {
         gridGroup.addLayer(L.featureGroup(rectLayers));
       }
     }
 
-    // 6. Global Single Mousemove Handler (Replaces hundreds of per-rectangle event listeners)
+    // 6. Global Mousemove Hover Handler
     map.on('mousemove', function(e) {
       const mouseLat = e.latlng.lat;
       const mouseLng = e.latlng.lng;
