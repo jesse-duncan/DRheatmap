@@ -40,27 +40,6 @@
       attribution: '&copy; OpenStreetMap contributors'
     }).addTo(map);
 
-    const drBoundaryGeoJSON = {
-      "type": "Feature",
-      "geometry": {
-        "type": "Polygon",
-        "coordinates": [[
-          [-71.765, 19.648], [-71.691, 19.852], [-71.305, 19.824], [-70.801, 19.865],
-          [-70.380, 19.905], [-69.892, 19.680], [-69.805, 19.421], [-69.452, 19.310],
-          [-69.182, 19.325], [-69.095, 19.210], [-69.280, 19.185], [-69.585, 19.215],
-          [-69.605, 19.030], [-69.325, 19.040], [-68.995, 19.020], [-68.620, 18.910],
-          [-68.320, 18.685], [-68.325, 18.520], [-68.375, 18.350], [-68.810, 18.320],
-          [-68.960, 18.410], [-69.240, 18.430], [-69.610, 18.420], [-69.890, 18.450],
-          [-70.210, 18.230], [-70.520, 18.230], [-70.850, 18.380], [-71.010, 18.210],
-          [-71.080, 17.890], [-71.210, 17.610], [-71.490, 17.470], [-71.650, 17.580],
-          [-71.690, 17.820], [-71.800, 18.020], [-71.680, 18.200], [-71.780, 18.480],
-          [-71.690, 18.720], [-71.780, 19.120], [-71.680, 19.310], [-71.765, 19.648]
-        ]]
-      }
-    };
-
-    L.geoJSON(drBoundaryGeoJSON, { style: { color: '#222', weight: 1.5, fill: false } }).addTo(map);
-
     function getColor(value, maxVal) {
       if (!value || value <= 0) return 'transparent';
       const ratio = Math.min(value / maxVal, 1);
@@ -97,49 +76,61 @@
       { lat: 18.62, lng: -68.71, radius: 0.40, crops: { "Sugarcane": 120000000 } }
     ];
 
-    // Spatial Hash Map for instant O(1) hover lookup
     const GRID_HASHMAP = {};
     const PRECOMPUTED_GRID = [];
+    const gridGroup = L.layerGroup().addTo(map);
 
-    for (let lat = bounds.minLat; lat < bounds.maxLat; lat += step) {
-      for (let lng = bounds.minLng; lng < bounds.maxLng; lng += step) {
-        const centerLat = lat + step / 2;
-        const centerLng = lng + step / 2;
+    // Fetch official DR boundary data for high detail
+    const DR_GEOJSON_URL = "https://raw.githubusercontent.com/datasets/geo-countries/master/data/countries.geojson";
 
-        if (!turf.booleanPointInPolygon(turf.point([centerLng, centerLat]), drBoundaryGeoJSON)) continue;
+    fetch(DR_GEOJSON_URL)
+      .then(res => res.json())
+      .then(data => {
+        const drFeature = data.features.find(f => 
+          f.properties.ISO_A3 === "DOM" || f.properties.ADMIN === "Dominican Republic"
+        );
 
-        let cropTotals = {};
-        let totalYield = 0;
+        L.geoJSON(drFeature, { style: { color: '#222', weight: 1.5, fill: false } }).addTo(map);
 
-        hotspots.forEach(spot => {
-          const dist = Math.hypot(centerLat - spot.lat, centerLng - spot.lng);
-          if (dist < spot.radius) {
-            const factor = Math.max(0, 1 - dist / spot.radius);
-            for (const [crop, weight] of Object.entries(spot.crops)) {
-              const val = weight * factor;
-              cropTotals[crop] = (cropTotals[crop] || 0) + val;
-              totalYield += val;
+        // Compute grid inside precise boundary
+        for (let lat = bounds.minLat; lat < bounds.maxLat; lat += step) {
+          for (let lng = bounds.minLng; lng < bounds.maxLng; lng += step) {
+            const centerLat = lat + step / 2;
+            const centerLng = lng + step / 2;
+
+            if (!turf.booleanPointInPolygon(turf.point([centerLng, centerLat]), drFeature)) continue;
+
+            let cropTotals = {};
+            let totalYield = 0;
+
+            hotspots.forEach(spot => {
+              const dist = Math.hypot(centerLat - spot.lat, centerLng - spot.lng);
+              if (dist < spot.radius) {
+                const factor = Math.max(0, 1 - dist / spot.radius);
+                for (const [crop, weight] of Object.entries(spot.crops)) {
+                  const val = weight * factor;
+                  cropTotals[crop] = (cropTotals[crop] || 0) + val;
+                  totalYield += val;
+                }
+              }
+            });
+
+            if (totalYield > 0) {
+              const cellData = {
+                lat, lng, centerLat, centerLng,
+                totalYield: Math.round(totalYield),
+                crops: cropTotals
+              };
+              
+              PRECOMPUTED_GRID.push(cellData);
+              const key = `${lat.toFixed(2)}_${lng.toFixed(2)}`;
+              GRID_HASHMAP[key] = cellData;
             }
           }
-        });
-
-        if (totalYield > 0) {
-          const cellData = {
-            lat, lng, centerLat, centerLng,
-            totalYield: Math.round(totalYield),
-            crops: cropTotals
-          };
-          
-          PRECOMPUTED_GRID.push(cellData);
-
-          // Key cell coordinates to 2 decimal places for fast lookup
-          const key = `${lat.toFixed(2)}_${lng.toFixed(2)}`;
-          GRID_HASHMAP[key] = cellData;
         }
-      }
-    }
 
-    const gridGroup = L.layerGroup().addTo(map);
+        renderGrid();
+      });
 
     function renderGrid() {
       gridGroup.clearLayers();
@@ -163,7 +154,7 @@
       }
     }
 
-    // Debounced Frame-Rate Capped Hover Handler
+    // Low-overhead O(1) hover lookup using spatial hash keys
     let isTicking = false;
     map.on('mousemove', function(e) {
       if (!isTicking) {
@@ -254,8 +245,6 @@
       return div;
     };
     legend.addTo(map);
-
-    renderGrid();
   </script>
 </body>
 </html>
