@@ -7,8 +7,16 @@
   <!-- Leaflet CSS -->
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <style>
-    body, html { margin: 0; padding: 0; height: 100%; font-family: sans-serif; }
-    #map { width: 100%; height: 100vh; }
+    body, html {
+      margin: 0;
+      padding: 0;
+      height: 100%;
+      font-family: sans-serif;
+    }
+    #map {
+      width: 100%;
+      height: 100vh;
+    }
     /* Info Panel Control */
     .info-panel {
       padding: 12px 16px;
@@ -18,7 +26,10 @@
       border-radius: 5px;
       min-width: 200px;
     }
-    .info-panel h4 { margin: 0 0 8px; color: #333; }
+    .info-panel h4 {
+      margin: 0 0 8px;
+      color: #333;
+    }
     /* Spectrum Legend */
     .legend {
       line-height: 18px;
@@ -41,131 +52,134 @@
       margin-bottom: 5px;
       border-radius: 2px;
     }
-    .legend-labels { display: flex; justify-content: space-between; font-size: 11px; }
+    .legend-labels {
+      display: flex;
+      justify-content: space-between;
+      font-size: 11px;
+    }
   </style>
 </head>
 <body>
-<div id="map"></div>
-<!-- Leaflet JS -->
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-<script>
-  // 1. Initialize Map centered over Dominican Republic
-  const map = L.map('map').setView([18.7357, -70.1627], 8);
+  <div id="map"></div>
 
-  // Add Base Tile Layer
-  L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
-    maxZoom: 18,
-    attribution: '&copy; OpenStreetMap &copy; CARTO'
-  }).addTo(map);
+  <!-- Leaflet JS -->
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script>
+    // 1. Initialize Map centered over Dominican Republic
+    const map = L.map('map').setView([18.7357, -70.1627], 8);
 
-  // 2. Color Gradient Mapping
-  function getColor(value, maxVal) {
-    if (value === 0) return 'hsl(0, 100%, 30%)'; // Dark Red
-    const ratio = Math.min(value / maxVal, 1);
-    const hue = ratio * 195;
-    return `hsl(${hue}, 90%, 45%)`;
-  }
+    // Add Base Tile Layer
+    L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
+      maxZoom: 18,
+      attribution: '&copy; OpenStreetMap &copy; CARTO'
+    }).addTo(map);
 
-  // 3. Grid Generation Parameters (1 Mile Resolution)
-  const bounds = { minLat: 17.5, maxLat: 19.9, minLng: -72.0, maxLng: -68.3 };
-  const step = 0.0145; // ~1 mile resolution at 18.7°N
-  const maxProduction = 500000000;
-
-  // Simulated regional production hotspots
-  const hotspots = [
-    { lat: 19.4, lng: -70.6, name: "Cibao Valley", crop: "Plantains & Rice", weight: 480000000 },
-    { lat: 18.4, lng: -68.9, name: "La Romana", crop: "Sugarcane", weight: 500000000 },
-    { lat: 18.9, lng: -70.7, name: "Constanza Highlands", crop: "Vegetables", weight: 180000000 },
-    { lat: 18.4, lng: -70.9, name: "Azua Valley", crop: "Bananas & Mangoes", weight: 90000000 }
-  ];
-
-  function getProductionData(lat, lng) {
-    let output = 0;
-    let mainCrop = "N/A";
-    hotspots.forEach(spot => {
-      const dist = Math.hypot(lat - spot.lat, lng - spot.lng);
-      if (dist < 0.6) {
-        const factor = Math.max(0, 1 - dist / 0.6);
-        output += spot.weight * factor;
-        if (factor > 0.3) mainCrop = spot.crop;
-      }
-    });
-    return {
-      lbs: Math.round(output),
-      crop: output > 0 ? mainCrop : "None / Protected"
-    };
-  }
-
-  // 4. Render Grid & Attach Interaction
-  const gridGroup = L.layerGroup().addTo(map);
-
-  for (let lat = bounds.minLat; lat < bounds.maxLat; lat += step) {
-    for (let lng = bounds.minLng; lng < bounds.maxLng; lng += step) {
-      const cellData = getProductionData(lat, lng);
-      const color = getColor(cellData.lbs, maxProduction);
-
-      const rectangle = L.rectangle([[lat, lng], [lat + step, lng + step]], {
-        color: "#ffffff",
-        weight: 0.1, // Reduced border weight for high grid density
-        fillColor: color,
-        fillOpacity: 0.6
-      });
-
-      rectangle.on('mouseover', function (e) {
-        this.setStyle({ weight: 1.5, color: '#000', fillOpacity: 0.85 });
-        infoPanel.update({
-          lat: lat.toFixed(3),
-          lng: lng.toFixed(3),
-          lbs: cellData.lbs.toLocaleString(),
-          crop: cellData.crop
-        });
-      });
-
-      rectangle.on('mouseout', function () {
-        gridGroup.resetStyle(this);
-        infoPanel.update();
-      });
-
-      gridGroup.addLayer(rectangle);
+    // 2. Color Gradient Mapping
+    function getColor(value, maxVal) {
+      if (value === 0) return 'hsl(0, 100%, 30%)'; // Dark Red
+      const ratio = Math.min(value / maxVal, 1);
+      const hue = ratio * 195;
+      return `hsl(${hue}, 90%, 45%)`;
     }
-  }
 
-  gridGroup.resetStyle = function (layer) {
-    layer.setStyle({ weight: 0.1, color: "#ffffff", fillOpacity: 0.6 });
-  };
+    // 3. Grid Generation Parameters
+    const bounds = { minLat: 17.5, maxLat: 19.9, minLng: -72.0, maxLng: -68.3 };
+    const step = 0.04; // Set to 0.04 step size
+    const maxProduction = 500000000;
 
-  // 5. Dynamic Hover Info Control
-  const infoPanel = L.control({ position: 'topright' });
-  infoPanel.onAdd = function () {
-    this._div = L.DomUtil.create('div', 'info-panel');
-    this.update();
-    return this._div;
-  };
-  infoPanel.update = function (props) {
-    this._div.innerHTML = '<h4>Agricultural Output</h4>' + (props ?
-      `<b>Location:</b> ${props.lat}°N, ${props.lng}°W<br />` +
-      `<b>Primary Crop:</b> ${props.crop}<br />` +
-      `<b>Est. Yield:</b> ${props.lbs} lbs`
-      : 'Hover over a grid cell');
-  };
-  infoPanel.addTo(map);
+    // Simulated regional production hotspots
+    const hotspots = [
+      { lat: 19.4, lng: -70.6, name: "Cibao Valley", crop: "Plantains & Rice", weight: 480000000 },
+      { lat: 18.4, lng: -68.9, name: "La Romana", crop: "Sugarcane", weight: 500000000 },
+      { lat: 18.9, lng: -70.7, name: "Constanza Highlands", crop: "Vegetables", weight: 180000000 },
+      { lat: 18.4, lng: -70.9, name: "Azua Valley", crop: "Bananas & Mangoes", weight: 90000000 }
+    ];
 
-  // 6. Color Spectrum Legend
-  const legend = L.control({ position: 'bottomright' });
-  legend.onAdd = function () {
-    const div = L.DomUtil.create('div', 'legend');
-    div.innerHTML = `
-      <strong>Production Gradient</strong>
-      <div class="legend-bar"></div>
-      <div class="legend-labels">
-        <span>0 lbs (Red)</span>
-        <span>250M lbs</span>
-        <span>500M+ lbs (Sky Blue)</span>
-      </div>
-    `;
-    return div;
-  };
-  legend.addTo(map);
-</script>
+    function getProductionData(lat, lng) {
+      let output = 0;
+      let mainCrop = "N/A";
+      hotspots.forEach(spot => {
+        const dist = Math.hypot(lat - spot.lat, lng - spot.lng);
+        if (dist < 0.6) {
+          const factor = Math.max(0, 1 - dist / 0.6);
+          output += spot.weight * factor;
+          if (factor > 0.3) mainCrop = spot.crop;
+        }
+      });
+      return { lbs: Math.round(output), crop: output > 0 ? mainCrop : "None / Protected" };
+    }
+
+    // 4. Render Grid & Attach Interaction
+    const gridGroup = L.layerGroup().addTo(map);
+
+    for (let lat = bounds.minLat; lat < bounds.maxLat; lat += step) {
+      for (let lng = bounds.minLng; lng < bounds.maxLng; lng += step) {
+        const cellData = getProductionData(lat, lng);
+        const color = getColor(cellData.lbs, maxProduction);
+
+        const rectangle = L.rectangle([[lat, lng], [lat + step, lng + step]], {
+          color: "#ffffff",
+          weight: 0.2,
+          fillColor: color,
+          fillOpacity: 0.6
+        });
+
+        rectangle.on('mouseover', function () {
+          this.setStyle({ weight: 1.5, color: '#000', fillOpacity: 0.85 });
+          infoPanel.update({
+            lat: lat.toFixed(3),
+            lng: lng.toFixed(3),
+            lbs: cellData.lbs.toLocaleString(),
+            crop: cellData.crop
+          });
+        });
+
+        rectangle.on('mouseout', function () {
+          this.setStyle({ weight: 0.2, color: "#ffffff", fillOpacity: 0.6 });
+          infoPanel.update();
+        });
+
+        gridGroup.addLayer(rectangle);
+      }
+    }
+
+    // 5. Dynamic Hover Info Control
+    const infoPanel = L.control({ position: 'topright' });
+
+    infoPanel.onAdd = function () {
+      this._div = L.DomUtil.create('div', 'info-panel');
+      this.update();
+      return this._div;
+    };
+
+    infoPanel.update = function (props) {
+      this._div.innerHTML = '<h4>Agricultural Output</h4>' + (props ?
+        `<b>Location:</b> ${props.lat}°N, ${props.lng}°W<br />` +
+        `<b>Primary Crop:</b> ${props.crop}<br />` +
+        `<b>Est. Yield:</b> ${props.lbs} lbs`
+        : 'Hover over a grid cell');
+    };
+
+    infoPanel.addTo(map);
+
+    // 6. Color Spectrum Legend
+    const legend = L.control({ position: 'bottomright' });
+
+    legend.onAdd = function () {
+      const div = L.DomUtil.create('div', 'legend');
+      div.innerHTML = `
+        <strong>Production Gradient</strong>
+        <div class="legend-bar"></div>
+        <div class="legend-labels">
+          <span>0 lbs (Red)</span>
+          <span>250M lbs</span>
+          <span>500M+ lbs (Sky Blue)</span>
+        </div>
+      `;
+      return div;
+    };
+
+    legend.addTo(map);
+  </script>
 </body>
 </html>
